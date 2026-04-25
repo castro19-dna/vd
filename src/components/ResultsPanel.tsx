@@ -1,6 +1,7 @@
 import { Download, Copy } from 'lucide-react';
 import { DownloadedVideo } from '../App';
 import { useState } from 'react';
+import DownloadDialog from './DownloadDialog';
 
 interface ResultsPanelProps {
   video: DownloadedVideo;
@@ -9,12 +10,56 @@ interface ResultsPanelProps {
 export default function ResultsPanel({ video }: ResultsPanelProps) {
   const [selectedFormat, setSelectedFormat] = useState<string>(video.formats[0].id);
   const [copied, setCopied] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadComplete, setDownloadComplete] = useState(false);
 
-  const handleDownload = (formatId: string) => {
-    const format = video.formats.find(f => f.id === formatId);
-    if (!format) return;
+  const selectedFormatData = video.formats.find(f => f.id === selectedFormat);
 
-    alert(`Download started: ${video.title} (${format.quality} - ${format.format})\n\nNote: This is a demo. Real downloads would be processed here.`);
+  const handleDownloadClick = () => {
+    setShowDialog(true);
+  };
+
+  const handleConfirmDownload = async () => {
+    if (!selectedFormatData) return;
+
+    setIsDownloading(true);
+    setDownloadComplete(false);
+
+    try {
+      // Call backend to download real video
+      const response = await fetch(
+        `http://localhost:4000/download?url=${encodeURIComponent(video.url)}`
+      );
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${video.title.replace(/[^a-z0-9]/gi, '_')}_${selectedFormatData.quality}.${selectedFormatData.format.toLowerCase()}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      setDownloadComplete(true);
+      setTimeout(() => {
+        setShowDialog(false);
+        setIsDownloading(false);
+        setDownloadComplete(false);
+      }, 1500);
+    } catch (error) {
+      console.error('Download failed:', error);
+      setIsDownloading(false);
+      alert('Download failed. Please make sure the backend is running.');
+    }
+  };
+
+  const handleCloseDialog = () => {
+    if (!isDownloading) {
+      setShowDialog(false);
+    }
   };
 
   const handleCopyUrl = () => {
@@ -109,7 +154,7 @@ export default function ResultsPanel({ video }: ResultsPanelProps) {
 
         {/* Download Button */}
         <button
-          onClick={() => handleDownload(selectedFormat)}
+          onClick={handleDownloadClick}
           className="w-full py-3 px-4 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-all transform hover:scale-105 active:scale-95"
         >
           <Download className="w-5 h-5" />
@@ -120,6 +165,17 @@ export default function ResultsPanel({ video }: ResultsPanelProps) {
           Downloads are typically completed within seconds. Large files may take longer.
         </p>
       </div>
+
+      {/* Download Dialog */}
+      <DownloadDialog
+        isOpen={showDialog}
+        onClose={handleCloseDialog}
+        onConfirm={handleConfirmDownload}
+        videoTitle={video.title}
+        formatQuality={selectedFormatData?.quality || ''}
+        formatType={selectedFormatData?.format || ''}
+        isDownloading={isDownloading}
+      />
     </div>
   );
 }
